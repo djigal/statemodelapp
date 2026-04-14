@@ -25,29 +25,21 @@ class PaymentCtx:
 
 pay_sm: StateMachine[PayStateEnum, PayEventEnum, PaymentCtx] = StateMachine()
 
-
+@pay_sm.transition(PayStateEnum.NEW, PayEventEnum.AUTHORIZE, PayStateEnum.AUTHORIZED)
 def authorize(ctx: PaymentCtx) -> None:
     ctx.audit.append(f"{ctx.payment_id}: authorized.")
 
-
+@pay_sm.transition((PayStateEnum.NEW, PayStateEnum.AUTHORIZED), PayEventEnum.FAIL, PayStateEnum.FAILED)
 def fail(ctx: PaymentCtx) -> None:
     ctx.audit.append(f"{ctx.payment_id}: failed.")
 
-
+@pay_sm.transition((PayStateEnum.AUTHORIZED, PayStateEnum.CAPTURED), PayEventEnum.REFUND, PayStateEnum.REFUNDED)
 def refund(ctx: PaymentCtx) -> None:
     ctx.audit.append(f"{ctx.payment_id}: refunded.")
 
-
+@pay_sm.transition(PayStateEnum.AUTHORIZED, PayEventEnum.CAPTURE, PayStateEnum.CAPTURED)
 def capture( ctx: PaymentCtx) -> None:
     ctx.audit.append(f"{ctx.payment_id}: captured.")
-
-pay_sm.add_transition(PayStateEnum.NEW, PayEventEnum.AUTHORIZE, PayStateEnum.AUTHORIZED, authorize)
-pay_sm.add_transition(PayStateEnum.NEW, PayEventEnum.FAIL, PayStateEnum.FAILED, fail)
-pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.REFUND, PayStateEnum.REFUNDED, refund)
-pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.CAPTURE, PayStateEnum.CAPTURED, capture)
-pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.FAIL, PayStateEnum.FAILED, fail)
-pay_sm.add_transition(PayStateEnum.CAPTURED, PayEventEnum.REFUND, PayStateEnum.REFUNDED, refund)
-
 
 @dataclass
 class Payment:
@@ -61,6 +53,7 @@ def main() -> None:
     payment = Payment(ctx=PaymentCtx(payment_id="1234") )
 
     payment.handle(PayEventEnum.AUTHORIZE)
+    # payment.handle(PayEventEnum.FAIL)
     payment.handle(PayEventEnum.CAPTURE)
     payment.handle(PayEventEnum.REFUND)
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Callable
+from typing import Callable, Iterable
 from enum import Enum
 
 class InvalidTransition(Exception):
@@ -28,3 +28,12 @@ class StateMachine[S: Enum, E: Enum, C]:
         next_state, action = self.next_transition(state, event)
         action(ctx)
         return next_state
+    
+    def transition(self, from_state: S| Iterable[S], event: E, to_state: S) -> S:
+        if not isinstance(from_state, Iterable):
+            from_state = (from_state,)
+        def decorator(func: Action[C]) -> Action[C]:
+            for state in from_state:
+                self.add_transition(state, event, to_state, func)
+            return func
+        return decorator
