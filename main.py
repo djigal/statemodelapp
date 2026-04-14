@@ -1,122 +1,71 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
+from enum import Enum, auto
+
+from sm import StateMachine
+
+class PayStateEnum(Enum):
+    NEW = auto()
+    AUTHORIZED = auto()
+    REFUNDED = auto()
+    CAPTURED = auto()
+    FAILED = auto()
+
+class PayEventEnum(Enum):
+    AUTHORIZE = auto()
+    REFUND = auto()
+    CAPTURE = auto()
+    FAIL = auto()
+
+@dataclass
+class PaymentCtx:
+    payment_id: str
+    audit: list[str] = field(default_factory=list[str])
 
 
-class PaymentState(Protocol):
-    """Common interface for all payment states."""
-    
-    def authorize(self, amount: "Payment") -> None: ...
-    def refund(self, amount: "Payment") -> None: ...
-    def capture(self, amount: "Payment") -> None: ...
-    def fail(self, amount: "Payment") -> None: ...
+pay_sm: StateMachine[PayStateEnum, PayEventEnum, PaymentCtx] = StateMachine()
+
+
+def authorize(ctx: PaymentCtx) -> None:
+    ctx.audit.append(f"{ctx.payment_id}: authorized.")
+
+
+def fail(ctx: PaymentCtx) -> None:
+    ctx.audit.append(f"{ctx.payment_id}: failed.")
+
+
+def refund(ctx: PaymentCtx) -> None:
+    ctx.audit.append(f"{ctx.payment_id}: refunded.")
+
+
+def capture( ctx: PaymentCtx) -> None:
+    ctx.audit.append(f"{ctx.payment_id}: captured.")
+
+pay_sm.add_transition(PayStateEnum.NEW, PayEventEnum.AUTHORIZE, PayStateEnum.AUTHORIZED, authorize)
+pay_sm.add_transition(PayStateEnum.NEW, PayEventEnum.FAIL, PayStateEnum.FAILED, fail)
+pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.REFUND, PayStateEnum.REFUNDED, refund)
+pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.CAPTURE, PayStateEnum.CAPTURED, capture)
+pay_sm.add_transition(PayStateEnum.AUTHORIZED, PayEventEnum.FAIL, PayStateEnum.FAILED, fail)
+pay_sm.add_transition(PayStateEnum.CAPTURED, PayEventEnum.REFUND, PayStateEnum.REFUNDED, refund)
 
 
 @dataclass
 class Payment:
-    """The context: delegates state-specific behavior to the current state object."""
-    
-    payment_id: str
-    audit: list[str]
-    state: PaymentState
+    ctx: PaymentCtx
+    state: PayStateEnum = field(default=PayStateEnum.NEW)
 
-    def authorize(self) -> None:
-        self.state.authorize(self)
-
-    def refund(self) -> None:
-        self.state.refund(self)
-
-    def capture(self) -> None:
-        self.state.capture(self)
-
-    def fail(self) -> None:
-        self.state.fail(self)
-
-# Concrete states implement various behaviors, associated with a state of the context.    
-
-class New:
-    def authorize(self, payment: Payment) -> None:
-        payment.audit.append(f"{payment.payment_id}: authorized.")
-        payment.state = Authorized()
-
-    def refund(self, payment: Payment) -> None:
-        raise Exception("Cannot refund a new payment.")
-
-    def capture(self, payment: Payment) -> None:
-        raise Exception("Cannot capture a new payment.")
-
-    def fail(self, payment: Payment) -> None:
-        payment.audit.append("Payment failed.")
-        payment.state = Failed()
-
-
-class Authorized:
-    def authorize(self, payment: Payment) -> None:
-        raise Exception("Payment is already authorized.")
-
-    def refund(self, payment: Payment) -> None:
-        payment.audit.append(f"{payment.payment_id}: refunded.")
-        payment.state = Refunded()
-
-    def capture(self, payment: Payment) -> None:
-        payment.audit.append(f"{payment.payment_id}: captured.")
-        payment.state = Captured()
-
-    def fail(self, payment: Payment) -> None:
-        payment.audit.append("Payment failed.")
-        payment.state = Failed()
-
-
-class Refunded:
-    def authorize(self, payment: Payment) -> None:
-        raise Exception("Cannot authorize a refunded payment.")
-
-    def refund(self, payment: Payment) -> None:
-        raise Exception("Payment is already refunded.")
-
-    def capture(self, payment: Payment) -> None:
-        raise Exception("Cannot capture a refunded payment.")
-
-    def fail(self, payment: Payment) -> None:
-        raise Exception("Cannot fail a refunded payment.")
-    
-
-class Captured:
-    def authorize(self, payment: Payment) -> None:
-        raise Exception("Cannot authorize a captured payment.")
-
-    def refund(self, payment: Payment) -> None:
-        payment.audit.append(f"{payment.payment_id}: refunded.")
-        payment.state = Refunded()
-
-    def capture(self, payment: Payment) -> None:
-        raise Exception("Payment is already captured.")
-
-    def fail(self, payment: Payment) -> None:
-        raise Exception("Cannot fail a captured payment.")
-
-
-class Failed:
-    def authorize(self, payment: Payment) -> None:
-        raise Exception("Cannot authorize a failed payment.")
-
-    def refund(self, payment: Payment) -> None:
-        raise Exception("Cannot refund a failed payment.")
-
-    def capture(self, payment: Payment) -> None:
-        raise Exception("Cannot capture a failed payment.")
-
-    def fail(self, payment: Payment) -> None:
-        raise Exception("Payment is already failed.")
-
+    def handle(self, event: PayEventEnum) -> None:
+        self.state = pay_sm.handle(self.state, event, self.ctx)
 
 def main() -> None:
-    payment = Payment(payment_id="p1", audit=[], state=New())
-    payment.authorize()
-    payment.capture()
-    payment.refund()
+    payment = Payment(ctx=PaymentCtx(payment_id="1234") )
 
-    print("final state:", type(payment.state).__name__)
-    print("audit: ", payment.audit)
+    payment.handle(PayEventEnum.AUTHORIZE)
+    payment.handle(PayEventEnum.CAPTURE)
+    payment.handle(PayEventEnum.REFUND)
+
+    print("final state:", type(payment.state))
+    print("audit: ", payment.ctx.audit)
 
 
 if __name__ == "__main__":
